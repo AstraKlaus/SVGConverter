@@ -14,7 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 
@@ -29,55 +29,16 @@ public class ImageController {
         this.imageService = imageService;
     }
 
-
-    @PostMapping("/put")
-    public ResponseEntity<String> uploadImage(@RequestParam("image") MultipartFile file) throws InterruptedException, IOException {
-        String convertedImage = imageService.convertFile(file);
-        return ResponseEntity.ok().body(convertedImage);
-    }
-
-    @PostMapping("/converting")
-    public byte[] convertImages(@RequestParam("image") MultipartFile file) throws IOException {
-        BufferedImage image = ImageIO.read(file.getInputStream());
-        byte[] pngBytes = imageService.imageToBytes(image);
-
-        // Конвертация PNG в PNM с помощью ImageMagick
-        ProcessBuilder magickProcessBuilder = new ProcessBuilder("magick","convert", "-", "pnm:-");
-        magickProcessBuilder.redirectErrorStream(true);
-        Process magickProcess = magickProcessBuilder.start();
-
-        OutputStream stdin = magickProcess.getOutputStream();
-        stdin.write(pngBytes);
-
-
-        InputStream pnmStream = magickProcess.getInputStream();
-
-        // Конвертация PNM в SVG с помощью potrace
-        ProcessBuilder potraceProcessBuilder = new ProcessBuilder("potrace", "--svg", "-");
-        potraceProcessBuilder.redirectErrorStream(true);
-        Process potraceProcess = potraceProcessBuilder.start();
-
-        stdin = potraceProcess.getOutputStream();
-        IOUtils.copy(pnmStream, stdin);
-
-        InputStream svgStream = potraceProcess.getInputStream();
-
-        // Чтение SVG из процесса и запись его в байтовый массив
-        ByteArrayOutputStream svgOutStream = new ByteArrayOutputStream();
-        IOUtils.copy(svgStream, svgOutStream);
-        byte[] svgBytes = svgOutStream.toByteArray();
-
-        // Закрытие потоков ввода-вывода
-        pnmStream.close();
-        svgStream.close();
-        svgOutStream.close();
-
-        // Возврат SVG в виде байтового массива
-        return svgBytes;
-    }
-
     @PostMapping("/convert")
-    public ResponseEntity<byte[]> convertImage(@RequestParam("file") MultipartFile file) throws IOException, InterruptedException {
+    public ResponseEntity<byte[]>  convertImages(@RequestParam("image") MultipartFile file) {
+        byte[] response = imageService.convertToSvg(file);
+        return response.length == 0
+                ? new ResponseEntity<>("Failed to convert file".getBytes(StandardCharsets.UTF_8), HttpStatus.BAD_REQUEST)
+                : ResponseEntity.ok().contentType(MediaType.valueOf("image/svg+xml")).body(response);
+    }
+
+    @PostMapping("/blackAndWhite")
+    public ResponseEntity<byte[]> convertImage(@RequestParam("file") MultipartFile file) throws IOException {
         String fileName = Objects.requireNonNull(file.getOriginalFilename()).replace(".png", "");
         File pngFile = File.createTempFile(fileName, ".png");
         file.transferTo(pngFile);
@@ -87,7 +48,8 @@ public class ImageController {
         System.out.println(pnmFile.createNewFile() + " " + file.getName() + " " + pnmFile.getAbsolutePath());
         System.out.println("convert " + file.getOriginalFilename() + pnmFile.getAbsolutePath());
 
-        ProcessBuilder pb1 = new ProcessBuilder("E:/Басня/ImageMagick/convert.exe", pngFile.getAbsolutePath(), pnmFile.getAbsolutePath());
+        ProcessBuilder pb1 = new ProcessBuilder("E:/Басня/ImageMagick/convert.exe",
+                pngFile.getAbsolutePath() ,pnmFile.getAbsolutePath());
         pb1.redirectErrorStream(true);
         Process process1 = pb1.start();
 

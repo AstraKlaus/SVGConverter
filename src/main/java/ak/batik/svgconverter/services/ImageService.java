@@ -1,43 +1,60 @@
 package ak.batik.svgconverter.services;
 
 import org.apache.commons.io.IOUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.*;
-import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
+import java.util.Stack;
 
 @Service
 public class ImageService {
 
+    private final String command;
 
-    public String convertFile(MultipartFile file) throws IOException, InterruptedException {
-        String fileName = Objects.requireNonNull(file.getOriginalFilename()).replace(".png", ".pnm");
+    @Autowired
+    public ImageService(String command) {
+        this.command = command;
+    }
 
-// Конвертация файла из PNG в PNM с помощью ImageMagick
-        File pnmFile = new File(fileName);
-        System.out.println(pnmFile.createNewFile()+file.getName() + pnmFile.getAbsolutePath());
-        ProcessBuilder pb1 = new ProcessBuilder("convert ", "C:/Users/Xaser/Documents/SVGConverter/arc.png", "C:/Users/Xaser/Documents/SVGConverter/arc.pnm");
-        //ProcessBuilder pb1 = new ProcessBuilder("convert", file.getResource().getFile().toPath().toString(), pnmFile.getAbsolutePath());
-        pb1.redirectErrorStream(true);
-        Process process1 = pb1.start();
-        process1.waitFor();
 
-// Конвертация файла из PNM в SVG с помощью potrace
-        ProcessBuilder pb2 = new ProcessBuilder("potrace", pnmFile.getAbsolutePath(), "-s", "-o", "-");
-        pb2.redirectErrorStream(true);
-        Process process2 = pb2.start();
+    public byte[] convertToSvg(MultipartFile file) {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
 
-        String svgString;
-        try (InputStream inputStream = process2.getInputStream()) {
-            svgString = IOUtils.toString(inputStream);
+            String fileName = Objects.requireNonNull(file.getOriginalFilename()).replace(".png", "");
+
+            File startFile = File.createTempFile(fileName, Objects.requireNonNull(file.getContentType())
+                    .substring(file.getContentType().indexOf("/")).replace("/", "."));
+            file.transferTo(startFile);
+            startFile.deleteOnExit();
+
+            File svgFile = File.createTempFile(fileName, ".svg");
+            svgFile.deleteOnExit();
+
+            ProcessBuilder builder = new ProcessBuilder(String.format(command, svgFile.getAbsolutePath(), startFile.getAbsolutePath()).split(" "));
+            builder.redirectInput(ProcessBuilder.Redirect.PIPE);
+            builder.redirectOutput(ProcessBuilder.Redirect.PIPE);
+            builder.redirectError(ProcessBuilder.Redirect.INHERIT);
+            builder.redirectError(ProcessBuilder.Redirect.DISCARD);
+
+            Process process = builder.start();
+            process.waitFor();
+
+            try (FileInputStream fis = new FileInputStream(svgFile)){
+                fis.transferTo(outputStream);
+            }
+
+            return outputStream.toByteArray();
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+            return new byte[0];
         }
 
-        return svgString;
     }
 
     public byte[] imageToBytes(BufferedImage image) throws IOException {

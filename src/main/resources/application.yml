@@ -1,0 +1,2 @@
+image:
+  command : inkscape.exe --actions="select-all;selection-trace:8,false,true,true,1,0.5,0.10;export-filename:"%s";export-do" "%s" --batch-process
